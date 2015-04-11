@@ -39,6 +39,11 @@ namespace fn {
             holder() {}
             virtual ~holder() {}
             virtual Ret invoke(Args&&... args) = 0;
+            
+            virtual std::unique_ptr<holder> clone() = 0;
+        private:
+            holder(holder const&); //
+            void operator = (holder const&); //
         };
         
         class function_holder : public holder {
@@ -48,6 +53,10 @@ namespace fn {
             function_holder(function_holder const& x) : function_(x.function_) {}
             virtual Ret invoke(Args&&... args) {
                 return function_(std::forward<Args>(args)...);
+            }
+            
+            virtual std::unique_ptr<holder> clone() { //
+                return std::unique_ptr<holder>(new function_holder(function_));
             }
         };
         
@@ -59,6 +68,10 @@ namespace fn {
             functor_holder(functor_holder const& x) : functor_(new Struct(x.functor_)) {}
             virtual Ret invoke(Args&&... args) {
                 return functor_->operator()(std::forward<Args>(args)...);
+            }
+            
+            virtual std::unique_ptr<holder> clone() { //
+                return std::unique_ptr<holder>(new functor_holder(*functor_.get())); //вообще неведомая хрень
             }
         };
         
@@ -77,9 +90,22 @@ namespace fn {
         
         function(function&& x) = default;
         
-        //function(function const& x) {}
+        function(function const& x) { //
+            if (x.function_ == nullptr) {
+                function_ = nullptr;
+            } else {
+                function_ = x.function_.get()->clone();
+            }
+        }
         
-        //function& operator= (function const& a) {}
+        function& operator= (function const& x) { //самой сбе я не сделала, но уже работает. не знаю, надо ли делать
+            if (x.function_ == nullptr) {
+                function_ = nullptr;
+            } else {
+                function_ = x.function_.get()->clone();
+            }
+            return *this;
+        }
         
         Ret operator() (Args&&... args) const {
             if(!function_) throw bad_function_call();
