@@ -30,10 +30,11 @@ namespace fn {
     template <typename Ret, typename... Args>
     class function <Ret (Args...)> {
         
-        using free_function = Ret(*)(Args...);
+        template<typename T>
+        using function_type = typename std::enable_if<std::is_convertible<T, Ret>::value, Ret>::type;
         
         template<typename T>
-        using functor_function_t = Ret (T::*)(Args...); //какое-то сложноватое название
+        using free_function = function_type<T>(*)(Args...);
         
         struct holder {
             holder() {}
@@ -41,21 +42,21 @@ namespace fn {
             virtual Ret invoke(Args&&... args) = 0;
             
             virtual std::unique_ptr<holder> clone() = 0;
-        private:
-            holder(holder const&); //
-            void operator = (holder const&); //
+        
+            holder(holder const&) = delete;
+            void operator = (holder const&) = delete;
         };
         
         class function_holder : public holder {
-            free_function function_;
+            free_function<Ret> function_;
         public:
-            function_holder(free_function func) : function_(func) {}
+            function_holder(free_function<Ret> func) : function_(func) {}
             function_holder(function_holder const& x) : function_(x.function_) {}
             virtual Ret invoke(Args&&... args) {
                 return function_(std::forward<Args>(args)...);
             }
             
-            virtual std::unique_ptr<holder> clone() { //
+            virtual std::unique_ptr<holder> clone() {
                 return std::unique_ptr<holder>(new function_holder(function_));
             }
         };
@@ -70,10 +71,12 @@ namespace fn {
                 return functor_->operator()(std::forward<Args>(args)...);
             }
             
-            virtual std::unique_ptr<holder> clone() { //
+            virtual std::unique_ptr<holder> clone() {
                 return std::unique_ptr<holder>(new functor_holder(*functor_.get())); //вообще неведомая хрень
             }
         };
+        
+        
         
         std::unique_ptr<holder> function_;
         
@@ -83,10 +86,13 @@ namespace fn {
         
         function(std::nullptr_t fn) noexcept : function_(nullptr) {}
         
-        function(free_function fn) : function_(std::make_unique<function_holder>(fn)) {}
+        template<typename T>
+        function(free_function<T> fn) : function_(std::make_unique<function_holder>(fn)) {}
+        
+        //function(free_function fn) : function_(std::make_unique<function_holder>(fn)) {}
         
         template <typename Struct>
-        function(Struct& fn) : function_(std::make_unique<functor_holder<Struct>>(fn)) {}
+        function(Struct const& fn) : function_(std::make_unique<functor_holder<Struct>>(fn)) {}
         
         function(function&& x) = default;
         
@@ -116,11 +122,16 @@ namespace fn {
             return (bool)function_;
         }
         
-        //void swap(function a) {}
+        void swap(function& a) {
+            std::swap(*this, a);
+        }
         
     };
     
-  //  void swap(function<class T> a, function<class T> b) {}
+    template<typename T>
+    void swap(function<T>& a, function<T>& b) {
+        std::swap(a, b);
+    }
 }
 
 #endif
